@@ -11,14 +11,33 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     const selectedText = info.selectionText;
     
     if (tab && tab.id) {
-      // Send the selected text to the content script in the active tab
       chrome.tabs.sendMessage(tab.id, {
         action: "generateBeautyShot",
         text: selectedText
       }).catch(err => {
-        console.error("Could not send message. Content script may not be loaded yet.", err);
-        // Optionally, inject the content script dynamically using chrome.scripting.executeScript
+        console.warn("Content script not loaded. Injecting dynamically...", err);
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["highlight.min.js", "content.js"]
+        }).then(() => {
+          // Retry sending message after injection
+          chrome.tabs.sendMessage(tab.id, {
+            action: "generateBeautyShot",
+            text: selectedText
+          });
+        }).catch(injectErr => {
+          console.error("Failed to inject content script:", injectErr);
+        });
       });
     }
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'captureScreen') {
+    chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
+      sendResponse({dataUrl});
+    });
+    return true; // Keep the message channel open for async response
   }
 });
